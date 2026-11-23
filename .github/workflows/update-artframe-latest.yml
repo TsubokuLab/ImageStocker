@@ -1,0 +1,58 @@
+name: Update sb_artframe latest image
+
+# sb_artframe/ 配下に新しい画像が push されたら、
+# 最新日付の画像を sb_artframe/latest.jpg にコピーする。
+# 固定URL（VRChat Image Loading 等）から最新の1枚を参照するため。
+#   https://raw.githubusercontent.com/TsubokuLab/ImageStocker/main/sb_artframe/latest.jpg
+#   https://tsubokulab.github.io/ImageStocker/sb_artframe/latest.jpg
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sb_artframe/**'
+      - '!sb_artframe/latest.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-artframe-latest
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy newest image to latest.jpg
+        run: |
+          cd sb_artframe
+          # YYYY/MM/YYYY-MM-DD[_HHMMSS].jpg をファイル名順で並べ、最後（最新）を選ぶ
+          NEWEST=$(find . -type f -regextype posix-extended \
+            -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}[^/]*\.(jpg|jpeg)' \
+            | awk -F/ '{print $NF"\t"$0}' | sort | tail -n 1 | cut -f2)
+          echo "newest: $NEWEST"
+          if [ -z "$NEWEST" ]; then
+            echo "No image found."
+            exit 0
+          fi
+          cp "$NEWEST" latest.jpg
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add sb_artframe/latest.jpg
+          if git diff --cached --quiet; then
+            echo "latest.jpg is already up to date."
+            exit 0
+          fi
+          git commit -m "Update sb_artframe/latest.jpg"
+          for i in 1 2 3; do
+            git push && exit 0
+            git pull --rebase
+          done
+          exit 1
